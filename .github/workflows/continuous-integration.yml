@@ -6,6 +6,46 @@ on:
     branches:
     tags:
 
+#jobs:
+#  ci:
+#    uses: laminas/workflow-continuous-integration/.github/workflows/continuous-integration.yml@1.x
 jobs:
-  ci:
-    uses: laminas/workflow-continuous-integration/.github/workflows/continuous-integration.yml@1.x
+  matrix:
+    name: Generate job matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - name: Gather CI configuration
+        id: matrix
+        uses: laminas/laminas-ci-matrix-action@v1
+
+  qa:
+    name: QA Checks
+    needs: [matrix]
+    runs-on: ${{ matrix.operatingSystem }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.matrix.outputs.matrix) }}
+    steps:
+      - name: ${{ matrix.name }}
+        uses: laminas/laminas-continuous-integration-action@v1
+        with:
+          job: ${{ matrix.job }}
+
+  composer-require-checker:
+    needs: [matrix]
+    name: "Check for missing dependencies"
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: 8.0
+          #extensions: ${{ fromJSON(needs.matrix.outputs.matrix.include.0) }}
+          #ini-values: memory_limit=-1
+      - uses: ramsey/composer-install@2.2.0
+      - run: composer global config bin-dir /usr/local/bin
+      - run: composer global require -W maglnet/composer-require-checker
+      - run: /usr/local/bin/composer-require-checker check
